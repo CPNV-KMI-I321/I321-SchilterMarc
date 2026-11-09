@@ -6,17 +6,52 @@ export function findAll() {
 }
 
 export function findById(id) {
-  fail(501, 'TODO : SELECT par identifiant');
+  return db.prepare(
+      'SELECT * FROM pizzas WHERE id = ?'
+  ).get(id) ?? null;
 }
 
 export function create(data) {
-  fail(501, 'TODO : INSERT paramétré');
+  const result = db.prepare(`
+    INSERT INTO pizzas (name, description, price, imageUrl)
+    VALUES (?, ?, ?, ?)
+  `).run(
+      data.name,
+      data.description,
+      data.price,
+      data.imageUrl
+  );
+
+  return findById(Number(result.lastInsertRowid));
 }
 
 export function update(id, data) {
-  fail(501, 'TODO : UPDATE paramétré');
+  const result = db.prepare(`
+    UPDATE pizzas
+    SET name = ?,
+        description = ?,
+        price = ?,
+        imageUrl = ?
+    WHERE id = ?
+  `).run(
+      data.name,
+      data.description,
+      data.price,
+      data.imageUrl,
+      id
+  );
+
+  if (result.changes === 0) {
+    return null;
+  }
+
+  return findById(id);
 }
 
 export function remove(id) {
-  fail(501, 'TODO : DELETE paramétré');
+  const result = db.prepare(
+      'DELETE FROM pizzas WHERE id = ?'
+  ).run(id);
+
+  return result.changes > 0;
 }
