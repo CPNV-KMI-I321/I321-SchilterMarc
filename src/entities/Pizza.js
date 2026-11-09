@@ -1,8 +1,10 @@
+
 import { db } from '../config/database.js';
-import { fail } from '../validation.js';
 
 export function findAll() {
-  return db.prepare('SELECT * FROM pizzas ORDER BY id').all();
+  return db.prepare(
+      'SELECT * FROM pizzas ORDER BY id'
+  ).all();
 }
 
 export function findById(id) {

@@ -1,0 +1,38 @@
+
+@startuml
+title Architecture de l'API Foodtruck
+
+left to right direction
+
+actor Client
+
+component "Routes\npizzas.js" as Route
+component "Controller\npizzasController.js" as Controller
+component "Entity\nPizza.js" as Entity
+database "SQLite\nfoodtruck.sqlite" as DB
+
+Client --> Route : Requête HTTP
+Route --> Controller : Appel du contrôleur
+Controller --> Entity : Appel des fonctions
+Entity --> DB : Requêtes SQL paramétrées
+
+DB --> Entity : Résultats SQL
+Entity --> Controller : Données pizzas
+Controller --> Client : Réponse HTTP / JSON
+
+note bottom of Controller
+  Validation des données :
+  validateId()
+  validatePizza()
+end note
+
+note bottom of Entity
+  Opérations :
+  findAll()
+  findById()
+  create()
+  update()
+  remove()
+end note
+
+@enduml
