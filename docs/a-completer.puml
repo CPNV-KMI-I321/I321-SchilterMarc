@@ -1,0 +1,114 @@
+@startuml
+title MCD — Composition des pizzas (relation N à N)
+hide circle
+skinparam linetype ortho
+
+entity "Pizza" as Pizza {
+  * id : entier
+  --
+  nom
+  description
+  prix
+  imageUrl
+}
+
+entity "Composition" as Composition {
+  * pizza_id : entier
+  * ingredient_id : entier
+}
+
+entity "Ingrédient" as Ingredient {
+  * id : entier
+  --
+  nom
+  prix
+}
+
+Pizza ||--|{ Composition : contient
+Ingredient ||--o{ Composition : compose
+note bottom of Composition
+  Une pizza contient au moins un ingrédient.
+  Un ingrédient peut ne composer aucune pizza.
+end note
+@enduml
+
+@startuml
+title MLD — Tables SQLite
+hide circle
+skinparam linetype ortho
+
+entity "pizzas" as pizzas {
+  * id : INTEGER <<PK>>
+  --
+  name : TEXT
+  description : TEXT
+  price : REAL
+  imageUrl : TEXT
+}
+
+entity "pizza_ingredients" as pizzaIngredients {
+  * pizza_id : INTEGER <<PK, FK>>
+  * ingredient_id : INTEGER <<PK, FK>>
+}
+
+entity "ingredients" as ingredients {
+  * id : INTEGER <<PK>>
+  --
+  name : TEXT
+  price : REAL
+}
+
+pizzas ||--|{ pizzaIngredients : ON DELETE CASCADE
+ingredients ||--o{ pizzaIngredients : référence
+note bottom of pizzas
+  Index UNIQUE sur name COLLATE NOCASE
+end note
+note bottom of pizzaIngredients
+  PRIMARY KEY (pizza_id, ingredient_id)
+  FK pizza_id → pizzas.id avec cascade
+  FK ingredient_id → ingredients.id
+end note
+@enduml
+
+@startuml
+title Séquence — Création d'une pizza
+actor Client
+participant "Route / contrôleur" as API
+participant "pizzasService" as Service
+database SQLite
+
+Client -> API : POST /api/pizzas\n{name, price, ingredientIds, ...}
+API -> Service : create(body)
+Service -> Service : valider pizza et IDs distincts
+alt Corps ou IDs invalides
+  Service --> API : erreur 400
+  API --> Client : 400 Bad Request
+else Entrée valide
+  Service -> SQLite : BEGIN IMMEDIATE
+  Service -> SQLite : vérifier tous les ingrédients
+  alt Ingrédient absent
+    Service -> SQLite : ROLLBACK
+    Service --> API : erreur 400
+    API --> Client : 400 Bad Request
+  else Ingrédients existants
+    Service -> SQLite : chercher le nom (NOCASE)
+    alt Nom déjà utilisé
+      Service -> SQLite : ROLLBACK
+      Service --> API : erreur 409
+      API --> Client : 409 Conflict
+    else Nom disponible
+      Service -> SQLite : INSERT pizzas
+      Service -> SQLite : INSERT pizza_ingredients (pour chaque ID)
+      alt Échec SQLite pendant les écritures
+        Service -> SQLite : ROLLBACK
+        Service --> API : erreur interne
+        API --> Client : 500 Internal Server Error
+      else Écritures réussies
+        Service -> SQLite : COMMIT
+        Service --> API : pizza avec ingredientIds
+        API --> Client : 201 Created + Location
+      end
+    end
+  end
+end
+@enduml
