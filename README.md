@@ -1,22 +1,30 @@
-# Foodtruck — Starter 1
+# Foodtruck — Starter 4
 
-Dépôt : `I321-StarterCode-1`. La branche `main` contient le starter. Ce dossier est un point de départ à compléter, pas le corrigé.
+Dépôt : `I321-StarterCode-4`. La branche `main` contient le starter. Ce dossier est un point de départ à compléter, pas le corrigé.
 Installer Node.js **24 LTS** et Git. Le cours et les consignes restent en français.
 
 ## Démarrer
 
 ```sh
-git clone https://github.com/CPNV-KMI-I321/I321-StarterCode-1.git
-cd I321-StarterCode-1
+git clone https://github.com/CPNV-KMI-I321/I321-StarterCode-4.git
+cd I321-StarterCode-4
 ```
 
 ```sh
-npm ci
-npm start
+npm run setup
 ```
 
-API : http://localhost:3000 ; Swagger : http://localhost:3000/docs.
-`npm run dev` redémarre le serveur lors des modifications.
+Puis, dans deux terminaux :
+
+```sh
+npm run start:ingredients
+```
+
+```sh
+npm run start:pizzas
+```
+
+Swagger Ingrédients : http://localhost:3002/docs ; Swagger Pizzas : http://localhost:3001/docs.
 
 Les routes et leur JSON attendu sont décrits dans Swagger. Les bases SQLite sont créées automatiquement.
 Pour personnaliser la configuration, copier le `.env.example` de chaque application vers `.env` dans le même dossier.
@@ -24,22 +32,27 @@ Les chemins de base sont relatifs au dossier de l'application. Ne pas reprendre 
 
 ## À réaliser
 
-`GET /api/pizzas` est un exemple complet à lire avant de commencer.
-Les autres opérations répondent **501** tant qu'elles ne sont pas implémentées.
+La structure des deux API et les transactions locales sont fournies, à partir du comportement de l'étape 3.
+Le seul appel interservices est à compléter dans `pizzas-api/src/clients/ingredientsClient.js`.
+Sans cet appel, créer ou modifier une pizza répond **501** ; les lectures et le CRUD Ingrédients fonctionnent.
 
-1. Compléter `findById`, `create`, `update` et `remove` dans `src/entities/Pizza.js` avec du SQL paramétré.
-2. Compléter les contrôleurs correspondants dans `src/controllers/pizzasController.js`.
-3. Réutiliser `validateId`, `validatePizza` et `fail` depuis `src/validation.js`.
-4. Pour POST : répondre 201 avec la pizza et un en-tête Location. Pour DELETE : 204 sans corps.
-5. Répondre 400 si les données sont invalides et 404 si une pizza demandée n'existe pas.
-6. Produire le diagramme Client → Route → Controller → Entity → SQLite.
+1. Pour chaque identifiant, appeler `GET /api/ingredients/:id` avec `fetch`.
+2. Lire l'URL depuis `INGREDIENTS_API_URL` (par défaut http://localhost:3002).
+3. Appliquer `HTTP_TIMEOUT_MS` (par défaut 2000) avec AbortSignal.timeout.
+4. Transformer 404 en erreur métier 400, et une panne, un timeout ou une réponse invalide en 503.
+5. Vérifier que le JSON reçu contient l'identifiant demandé.
+6. Ne jamais accéder à la base Ingrédients depuis Pizzas, ni garder une transaction SQL ouverte pendant un appel HTTP.
+7. Dessiner les composants et la séquence avec la frontière réseau et les erreurs.
 
-Ne mettre aucun SQL dans les routes ou contrôleurs, ni req/res dans les entités.
-La configuration SQLite, la table pizzas, les routes, Swagger et la validation sont déjà fournis.
+Commencer par lire `pizzas-api/src/services/pizzasService.js` pour voir où le client est appelé.
+Créer d'abord un ingrédient (`{"name":"Tomate","price":1}`), puis une pizza :
 
 ```json
-{"name":"Margherita","description":"Classique","price":14.5}
+{"name":"Margherita","price":14.5,"ingredientIds":[1]}
 ```
+
+Tester aussi une création quand seul Pizzas est démarré : le résultat final attendu est 503.
+La suppression distribuée des ingrédients n'est pas traitée dans ce laboratoire.
 
 ## Vérifier son travail
 

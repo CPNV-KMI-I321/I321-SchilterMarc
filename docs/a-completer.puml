@@ -1,25 +1,102 @@
 
 @startuml
-title Foodtruck - Diagramme de classes
+title Architecture des composants - Foodtruck
 
-class Pizza {
-    - id : Integer
-    - name : String
-    - description : String
-    - price : Number
-    - imageUrl : String
+left to right direction
+
+actor Client
+
+package "API Pizzas : port 3001" {
+    component "Routes\npizzas.js" as PRoutes
+    component "Controller\npizzasController.js" as PController
+    component "Service\npizzasService.js" as PService
+    component "Client HTTP\ningredientsClient.js" as IClient
+    component "Entity\nPizza.js" as PEntity
+    component "Entity\nPizzaComposition.js" as Composition
+    database "SQLite\npizzas.sqlite" as PDB
 }
 
-class Ingredient {
-    - id : Integer
-    - name : String
-    - price : Number
+package "API Ingrédients : port 3002" {
+    component "Routes\ningredients.js" as IRoutes
+    component "Controller\ningredientsController.js" as IController
+    component "Service\ningredientsService.js" as IService
+    component "Entity\nIngredient.js" as IEntity
+    database "SQLite\ningredients.sqlite" as IDB
 }
 
-note bottom
-    Les classes Pizza et Ingredient
-    sont indépendantes.
-    Aucune association n'est définie.
+Client --> PRoutes : HTTP
+PRoutes --> PController
+PController --> PService
+PService --> PEntity
+PService --> Composition
+PEntity --> PDB
+Composition --> PDB
+
+IClient <-- PService
+IClient --> IRoutes : GET /api/ingredients/:id
+IRoutes --> IController
+IController --> IService
+IService --> IEntity
+IEntity --> IDB
+
+note bottom of IClient
+  Timeout : HTTP_TIMEOUT_MS
+  404 distant : erreur métier 400
+  Panne / timeout / réponse invalide : 503
 end note
+
+note bottom of PDB
+  Aucune connexion directe
+  à la base Ingrédients
+end note
+
+@enduml
+
+@startuml
+title Séquence - Création d'une pizza
+
+actor Client
+participant "Pizzas API\nController" as Controller
+participant "PizzasService" as Service
+participant "IngredientsClient" as ClientHTTP
+participant "Ingredients API" as Ingredients
+database "SQLite Pizzas" as DB
+
+Client -> Controller : POST /api/pizzas
+Controller -> Service : create(body)
+Service -> Service : validatePizza()
+Service -> Service : validateIngredientIds()
+
+loop Pour chaque ingredientId
+    Service -> ClientHTTP : ensureExist(id)
+    ClientHTTP -> Ingredients : GET /api/ingredients/:id
+
+    alt Ingrédient existant
+        Ingredients --> ClientHTTP : 200 + JSON
+        ClientHTTP -> ClientHTTP : Vérifier l'identifiant
+    else Ingrédient inexistant
+        Ingredients --> ClientHTTP : 404
+        ClientHTTP --> Service : Erreur métier 400
+        Service --> Controller : 400 Bad Request
+        Controller --> Client : Erreur JSON
+    else Panne, timeout ou réponse invalide
+        Ingredients --> ClientHTTP : Erreur ou réponse invalide
+        ClientHTTP --> Service : Erreur 503
+        Service --> Controller : 503 Service Unavailable
+        Controller --> Client : Erreur JSON
+    end
+end
+
+note over Service, DB
+  L'appel HTTP est terminé.
+  Aucune transaction SQL n'a été ouverte pendant le réseau.
+end note
+
+Service -> DB : BEGIN TRANSACTION
+Service -> DB : INSERT pizza
+Service -> DB : INSERT compositions
+Service -> DB : COMMIT
+Service --> Controller : Pizza créée
+Controller --> Client : 201 Created + Location + JSON
 
 @enduml

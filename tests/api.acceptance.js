@@ -1,28 +1,40 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
 
 process.env.DB_PATH = ':memory:';
-const { default: app } = await import('../src/app.js');
-const { db } = await import('../src/config/database.js');
+const { default: app } = await import('../pizzas-api/src/app.js');
+const { db } = await import('../pizzas-api/src/config/database.js');
+const { default: ingredientsApp } = await import('../ingredients-api/src/app.js');
+const { db: ingredientsDb } = await import('../ingredients-api/src/config/database.js');
+let ingredientServer;
+let ingredientBase;
 let server;
 let base;
 before(async () => {
+  ingredientServer = ingredientsApp.listen(0, '127.0.0.1');
+  await once(ingredientServer, 'listening');
+  ingredientBase = `http://127.0.0.1:${ingredientServer.address().port}`;
+  process.env.INGREDIENTS_API_URL = ingredientBase;
   server = app.listen(0, '127.0.0.1');
-  await new Promise(resolve => server.once('listening', resolve));
+  await once(server, 'listening');
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => {
   await new Promise(resolve => server.close(resolve));
+  await new Promise(resolve => ingredientServer.close(resolve));
   db.close();
+  ingredientsDb.close();
 });
 async function request(path, method = 'GET', body) {
-  return fetch(base + path, { method,
+  return fetch((path.startsWith('/api/ingredients') ? ingredientBase : base) + path, { method,
     headers: { 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 }
 
 test('CRUD pizzas et validation HTTP', async () => {
-  const input = { name: 'Margherita', description: 'Classique', price: 14.5 };
+  const ingredient = await (await request('/api/ingredients', 'POST', { name: 'Tomate', price: 1 })).json();
+  const input = { name: 'Margherita', description: 'Classique', price: 14.5, ingredientIds: [ingredient.id] };
   let response = await request('/api/pizzas', 'POST', input);
   assert.equal(response.status, 201);
   const pizza = await response.json();
@@ -39,6 +51,7 @@ test('CRUD pizzas et validation HTTP', async () => {
   assert.equal((await request(`/api/pizzas/${pizza.id}`)).status, 404);
   assert.equal((await request(`/api/pizzas/${pizza.id}`, 'PUT', input)).status, 404);
   assert.equal((await request(`/api/pizzas/${pizza.id}`, 'DELETE')).status, 404);
+  assert.equal((await request(`/api/ingredients/${ingredient.id}`, 'DELETE')).status, 204);
   assert.equal((await request('/openapi.json')).status, 200);
   assert.equal((await request('/docs/')).status, 200);
   const malformed = await fetch(base + '/api/pizzas', {

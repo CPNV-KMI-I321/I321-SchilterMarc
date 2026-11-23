@@ -3,36 +3,43 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 
 process.env.DB_PATH = ':memory:';
-const { default: app } = await import('../src/app.js');
-const { db } = await import('../src/config/database.js');
-let server;
-let base;
-before(async () => {
-  server = app.listen(0, '127.0.0.1');
+const { default: pizzaApp } = await import('../pizzas-api/src/app.js');
+const { default: ingredientApp } = await import('../ingredients-api/src/app.js');
+const { db: pizzaDb } = await import('../pizzas-api/src/config/database.js');
+const { db: ingredientDb } = await import('../ingredients-api/src/config/database.js');
+const servers = [];
+let pizzas;
+let ingredients;
+async function listen(app) {
+  const server = app.listen(0, '127.0.0.1');
+  servers.push(server);
   await once(server, 'listening');
-  base = `http://127.0.0.1:${server.address().port}`;
+  return `http://127.0.0.1:${server.address().port}`;
+}
+before(async () => {
+  ingredients = await listen(ingredientApp);
+  pizzas = await listen(pizzaApp);
+  process.env.INGREDIENTS_API_URL = ingredients;
 });
 after(async () => {
-  await new Promise(resolve => server.close(resolve));
-  db.close();
+  for (const server of servers) await new Promise(resolve => server.close(resolve));
+  pizzaDb.close();
+  ingredientDb.close();
 });
-async function request(path, method = 'GET', body) {
+function request(base, path, method = 'GET', body) {
   return fetch(base + path, { method, headers: { 'Content-Type': 'application/json' },
     signal: AbortSignal.timeout(5000),
     ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 }
 
-test('le serveur, Swagger et le contrat HTTP sont disponibles', async () => {
-  assert.deepEqual(await (await request('/health')).json(), { status: 'ok' });
-  assert.equal((await request('/docs/')).status, 200);
-  assert.equal((await request('/openapi.json')).status, 200);
-  assert.equal((await request('/api/pizzas')).status, 200);
-});
-
-
-test('le CRUD Pizzas acquis à la séance précédente fonctionne', async () => {
-  const response = await request('/api/pizzas', 'POST', { name: 'Exemple', price: 12 });
+test('les deux API démarrent avec leur propre Swagger et leur propre base', async () => {
+  for (const base of [pizzas, ingredients]) {
+    assert.deepEqual(await (await request(base, '/health')).json(), { status: 'ok' });
+    assert.equal((await request(base, '/docs/')).status, 200);
+    assert.equal((await request(base, '/openapi.json')).status, 200);
+  }
+  const response = await request(ingredients, '/api/ingredients', 'POST', { name: 'Tomate', price: 1 });
   assert.equal(response.status, 201);
-  const pizza = await response.json();
-  assert.equal((await request(`/api/pizzas/${pizza.id}`, 'DELETE')).status, 204);
+  const ingredient = await response.json();
+  assert.equal((await request(ingredients, `/api/ingredients/${ingredient.id}`)).status, 200);
 });
